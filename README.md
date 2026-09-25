@@ -32,7 +32,7 @@ npm run start
 
 首页默认选择未攻破的 **Treasury Agent · Live Arena（Arena #3，v1）**。右上角可使用已充值的本地 Demo Wallet；也可连接浏览器钱包并切换到 HSK 测试网。
 
-1. 查看左侧可信商户名册、右侧可赢奖金和合约余额；点击 **Buy ticket**。购买和启动均是 HSK 测试网真实交易。
+1. 查看左侧可信商户名册、右侧可赢奖金和合约余额；点击 **Buy ticket**。购买和启动均是 HSK 测试网真实交易。右上角可切换为 MetaMask 等浏览器钱包，使用自己的测试网地址创建挑战、赞助或购票。
 2. 在攻击终端提交下面的教学攻击。v1 的设计缺陷是过度相信发票中的“财务紧急改址”指令；模型输出有随机性，未成功时同一 Ticket 还有剩余回合。
 3. 观察 `lookup_vendor` 与 `propose_payment` 工具调用。错误地址经程序核对后产生链上裁决；点击 **Claim** 领取测试 HSK。
 4. 切到 **Evolution**。Codex 提出一条局部补丁，系统重放攻击两次、测试两张合法发票及一张未知商户发票。测试通过才发布 v2；页面展示补丁、结果、完整攻击证据与哈希。
@@ -63,7 +63,7 @@ npm run start
 
 | 环节 | 实现 |
 | --- | --- |
-| 挑战创建 | 网页配置标题、商户名册、Ticket 价格、最低奖池和初始资金；规则与策略的哈希上链。只有可程序判定的付款审核模板。 |
+| 挑战创建 | 网页配置标题、商户名册、Ticket 价格、最低奖池和初始资金；Demo Wallet 或浏览器钱包均可作为链上创建者，规则与策略的哈希上链。只有可程序判定的付款审核模板。 |
 | Ticket | 每张 Ticket 最多三条玩家消息。合约托管费用，完成裁决后 80% 入奖池、20% 归运营；未使用或超时 Ticket 可以全额退款。 |
 | Defender | DeepSeek Flash 非思考模式。harness 只提供 `lookup_vendor`、`propose_payment`、`reject_invoice`；付款工具只记录提案，不接触真实资金。 |
 | 固定裁决 | 程序核对提案地址、商户和金额上限。聊天文字里的“批准”不计分。签名使用 EIP-712，绑定链 ID、合约、Arena、版本、Ticket、玩家、对话哈希、结果、nonce 和有效期。 |
@@ -85,13 +85,14 @@ npm run start
 npm run doctor          # 只读检查 RPC、合约、钱包、Codex 登录和策略哈希
 npm run accounting      # 对账：奖池 + Ticket 托管 + 手续费 + 已知可领取额
 npm run check:model     # 真实 DeepSeek 正常发票与 v1 攻击检查
+npm run check:reviser   # Codex 生成单点补丁，随后执行真实回放与正常任务测试
 npm test                # 固定付款裁决测试
 npm run contracts:test  # Foundry：签名、首胜、70/30、80/20、退款、暂停和资金守恒
 npm run build           # TypeScript + 前端生产构建
 ```
 
-主要代码：[合约](./contracts/src/HoneypotArena.sol)、[Defender harness](./src/server/defender.ts)、[裁决与 API](./src/server/index.ts)、[Codex Reviser](./src/server/reviser.ts)、[网页](./src/web/main.tsx)。历史数据位于 `data/arena.sqlite`，不进入 Git；网页构建产物位于 `dist/`。
+主要代码：[合约](./contracts/src/HoneypotArena.sol)、[Defender harness](./src/server/defender.ts)、[裁决与 API](./src/server/index.ts)、[Codex Reviser](./src/server/reviser.ts)、[链上事件索引器](./src/server/indexer.ts)、[网页](./src/web/main.tsx)。历史数据位于 `data/arena.sqlite`，不进入 Git；网页构建产物位于 `dist/`。
 
-最近一次测试网对账：合约余额 **0.03004 测试 HSK** = 活跃奖池 **0.02924** + 手续费 **0.0008**；未结算 Ticket 和已知钱包的待领取额均为零。若其他浏览器钱包随后参与，脚本会把未列入本机钱包集合的负债显示为余额差额。
+最近一次测试网对账的未解释余额为 **0**：合约余额等于活跃奖池、未结算 Ticket、运营费和已知钱包待领取额之和。运行 `npm run accounting` 可查看实时数额；若其他浏览器钱包随后参与，脚本会把未列入本机钱包集合的负债显示为余额差额。
 
 本项目对应 [Ethereum Hackathon @ Sydney](https://luma.com/49iyovqf) 的 HSK Chain AI × Web3／AI Agents 方向。现场演示只需这台电脑；比赛平台若要求提交代码仓库或视频，需在截止前按主办方当时公布的入口办理。

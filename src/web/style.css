@@ -2679,3 +2679,43 @@ footer > span:last-child {
   border: 1px solid #55476b;
   border-radius: 4px;
 }
+.pending-arena-banner {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #665283;
+  background: #2b2340;
+  color: #dac5ff;
+  border-radius: 8px;
+  padding: 13px 15px;
+  margin-bottom: 16px;
+  font-size: 11px;
+}
+.pending-arena-banner > svg {
+  flex: none;
+}
+.pending-arena-banner span {
+  flex: 1;
+}
+.pending-arena-banner button {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  background: #7957ca;
+  border: 1px solid #a888ed;
+  color: white;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+@media (max-width: 650px) {
+  .pending-arena-banner {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+  .pending-arena-banner button {
+    margin-left: 28px;
+  }
+}

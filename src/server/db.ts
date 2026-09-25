@@ -65,6 +65,10 @@ CREATE TABLE IF NOT EXISTS events (
   payload_json TEXT NOT NULL,
   created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+CREATE TABLE IF NOT EXISTS chain_sync (
+  key TEXT PRIMARY KEY,
+  value TEXT NOT NULL
+);
 `);
 const messageColumns = new Set(
   (db.pragma("table_info(messages)") as { name: string }[]).map((c) => c.name),
@@ -73,6 +77,16 @@ if (!messageColumns.has("model"))
   db.exec("ALTER TABLE messages ADD COLUMN model TEXT");
 if (!messageColumns.has("usage_json"))
   db.exec("ALTER TABLE messages ADD COLUMN usage_json TEXT");
+const eventColumns = new Set(
+  (db.pragma("table_info(events)") as { name: string }[]).map((c) => c.name),
+);
+if (!eventColumns.has("tx_hash"))
+  db.exec("ALTER TABLE events ADD COLUMN tx_hash TEXT");
+if (!eventColumns.has("log_index"))
+  db.exec("ALTER TABLE events ADD COLUMN log_index INTEGER");
+db.exec(
+  "CREATE UNIQUE INDEX IF NOT EXISTS events_chain_unique ON events(tx_hash, log_index)",
+);
 
 export function event(arenaId: number, kind: string, payload: unknown) {
   const result = db

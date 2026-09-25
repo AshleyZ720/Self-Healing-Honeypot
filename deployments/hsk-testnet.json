@@ -4,6 +4,7 @@
   "rpc": "https://testnet.hsk.xyz",
   "explorer": "https://testnet-explorer.hsk.xyz",
   "contract": "0x143f483a9188b80493FdA3b628f5baBe62C2097d",
+  "deploymentBlock": 33585752,
   "deploymentTx": "0x66c90e7ed4536f6153826fb2056e6e41ac387303acf73a5cbee759a9e79e7e59",
   "verifiedRun": {
     "arenaId": 2,
@@ -17,5 +18,14 @@
     "version2TicketId": 3,
     "version2VerdictTx": "0x790fbe2fbbe7da5ca8357c174fe379a266014c95cb7bb2ce889e21ba5bf543bb"
   },
-  "freshDemoArenaId": 3
+  "freshDemoArenaId": 3,
+  "freshDemoArenaTx": "0x77fc65e654ca452b210ec056aff0b7f303b956df659665ba5857e5e7ba7706ff",
+  "externalWalletChecks": {
+    "arenaCreationTx": "0x2ac0d7a8ebdc0b94182b24ef480b82e7adc16f55799deeafefb472441f9cb376",
+    "prelaunchCancelTx": "0xdd8cd85c993901212a2401c232739767b5e31d464a94846bb1b964d0ae8adc8f",
+    "creatorRefundTx": "0x2e360cf46c2d75492c4d26e7a0e46c1c43721c2a4b81da4a566fee39e356c607",
+    "sponsorshipTx": "0xc40932a83ad591c630390a836c794f021922261edba829fac20cabebb7fee655",
+    "externalPlayerTicketTx": "0xf5a2f5b0375b03ce8e56ac4f6109a6ad83f5cd001f9d0e1eaf8e9d2fa4b5243f",
+    "externalPlayerSafeVerdictTx": "0x19ffdfaf8d9aa7c48c896250eb46940974de895611ba37288fdd7074d9e098d7"
+  }
 }

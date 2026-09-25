@@ -38,9 +38,11 @@ import {
 } from "./chain.js";
 import { config } from "./config.js";
 import { db, event } from "./db.js";
+import { syncChainEvents } from "./indexer.js";
 import { judgeProposal, runDefender } from "./defender.js";
 import { evaluatePatch, proposePatch } from "./reviser.js";
 import {
+  arenaAuthMessage,
   CHALLENGE_RULES,
   DEFAULT_POLICY,
   DEFAULT_VENDORS,
@@ -115,7 +117,9 @@ async function fullArena(id: number) {
     ArenaRow | undefined;
   if (!row) throw new Error("Arena not found");
   const chain = await getChainArena(id);
-  const prizeWei = (BigInt(chain.pot) * 7000n) / 10000n;
+  const projectedPot =
+    BigInt(chain.pot) + (BigInt(chain.ticketPrice) * 8000n) / 10000n;
+  const prizeWei = (projectedPot * 7000n) / 10000n;
   const versions = db
     .prepare("SELECT * FROM versions WHERE arena_id = ? ORDER BY version DESC")
     .all(id) as VersionRow[];
@@ -176,8 +180,9 @@ async function fullArena(id: number) {
     chain: {
       ...chain,
       potHsk: formatEther(BigInt(chain.pot)),
+      projectedPotHsk: formatEther(projectedPot),
       prizeHsk: formatEther(prizeWei),
-      rolloverHsk: formatEther(BigInt(chain.pot) - prizeWei),
+      rolloverHsk: formatEther(projectedPot - prizeWei),
       ticketPriceHsk: formatEther(BigInt(chain.ticketPrice)),
     },
     versions: versions.map((v) => ({
@@ -185,7 +190,8 @@ async function fullArena(id: number) {
       policyHash: v.policy_hash,
       patch: v.patch_json ? JSON.parse(v.patch_json) : null,
       evidenceHash: v.evidence_hash,
-      status: v.status,
+      status:
+        v.version === chain.version ? chain.stage.toLowerCase() : v.status,
       createdAt: v.created_at,
     })),
     events: events.map((e) => ({
@@ -471,6 +477,103 @@ app.post("/api/arenas", async (req, res) => {
   ).run(count, DEFAULT_POLICY, firstPolicyHash);
   notify(count, "arena_created", { tx, title, seedHsk: formatEther(seed) });
   res.status(201).json({ arenaId: count, tx, arena: await fullArena(count) });
+});
+
+app.post("/api/arenas/register", async (req, res) => {
+  const arenaId = Number(req.body.arenaId);
+  const createTx = String(req.body.createTx || "") as Hex;
+  const signature = String(req.body.signature || "") as Hex;
+  const title = String(req.body.title || "")
+    .trim()
+    .slice(0, 70);
+  const description = String(req.body.description || "")
+    .trim()
+    .slice(0, 500);
+  const rules = String(req.body.rules || CHALLENGE_RULES)
+    .trim()
+    .slice(0, 2000);
+  const vendors = req.body.vendors as Vendor[];
+  if (
+    !Number.isSafeInteger(arenaId) ||
+    arenaId < 1 ||
+    !/^0x[0-9a-fA-F]{64}$/.test(createTx) ||
+    !title ||
+    !description ||
+    !Array.isArray(vendors) ||
+    vendors.length < 1 ||
+    vendors.length > 6 ||
+    vendors.some(
+      (v) => !v.name || !isAddress(v.address) || !(Number(v.maxAmount) > 0),
+    )
+  )
+    throw new Error("Invalid creator registration");
+  const chain = await waitForChain(
+    () => getChainArena(arenaId),
+    (state) =>
+      isAddress(state.creator) &&
+      state.creator !== "0x0000000000000000000000000000000000000000",
+    `arena ${arenaId} creator`,
+  );
+  const authorized = await verifyMessage({
+    address: chain.creator as `0x${string}`,
+    message: arenaAuthMessage(arenaId),
+    signature,
+  }).catch(() => false);
+  if (!authorized)
+    throw new Error("Wallet signature does not match arena creator");
+  const expectedRulesHash = contentHash(JSON.stringify({ rules, vendors }));
+  const expectedPolicyHash = policyHash(DEFAULT_POLICY);
+  const price = parseEther(String(req.body.ticketPriceHsk || ""));
+  const minPot = parseEther(String(req.body.minimumPotHsk || ""));
+  if (
+    chain.version !== 1 ||
+    chain.rulesHash.toLowerCase() !== expectedRulesHash.toLowerCase() ||
+    chain.policyHash.toLowerCase() !== expectedPolicyHash.toLowerCase() ||
+    BigInt(chain.ticketPrice) !== price ||
+    BigInt(chain.minimumPot) !== minPot
+  )
+    throw new Error("Arena settings do not match the on-chain commitment");
+  const receipt = await publicClient.getTransactionReceipt({ hash: createTx });
+  const creation = receipt.logs
+    .map((log) => {
+      try {
+        return decodeEventLog({ abi, data: log.data, topics: log.topics });
+      } catch {
+        return undefined;
+      }
+    })
+    .find(
+      (log) =>
+        log?.eventName === "ArenaCreated" &&
+        Number((log.args as unknown as { arenaId: bigint }).arenaId) ===
+          arenaId,
+    );
+  if (receipt.status !== "success" || !creation)
+    throw new Error("Arena creation transaction could not be verified");
+  const inserted = db
+    .prepare(
+      "INSERT OR IGNORE INTO arenas (id, title, description, rules, rules_hash, vendors_json, ticket_price, min_pot) VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+    )
+    .run(
+      arenaId,
+      title,
+      description,
+      rules,
+      expectedRulesHash,
+      JSON.stringify(vendors),
+      price.toString(),
+      minPot.toString(),
+    );
+  db.prepare(
+    "INSERT OR IGNORE INTO versions (arena_id, version, policy, policy_hash, status) VALUES (?, 1, ?, ?, 'open')",
+  ).run(arenaId, DEFAULT_POLICY, expectedPolicyHash);
+  if (inserted.changes)
+    notify(arenaId, "arena_created", {
+      tx: createTx,
+      title,
+      creator: chain.creator,
+    });
+  res.json({ arenaId, arena: await fullArena(arenaId) });
 });
 
 app.post("/api/demo/tickets", async (req, res) => {
@@ -999,6 +1102,12 @@ app.use(
 
 app.listen(config.port, "127.0.0.1", () => {
   console.log(`Honeypot API ready at http://127.0.0.1:${config.port}`);
+  const sync = () =>
+    void syncChainEvents((item) => bus.emit("event", item)).catch((error) =>
+      console.error("Chain event sync failed:", error),
+    );
+  sync();
+  setInterval(sync, 8000);
   const recoverable = db
     .prepare(
       "SELECT a.ticket_id, a.reason, t.arena_id FROM attempts a JOIN tickets t ON t.id=a.ticket_id WHERE a.won=1 AND a.verdict_tx IS NOT NULL AND a.patch_status IN ('queued','error')",

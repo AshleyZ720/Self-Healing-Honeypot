@@ -33,7 +33,7 @@ if (receipt.status !== "success" || !receipt.contractAddress)
   throw new Error("Deployment failed");
 fs.appendFileSync(
   path.join(config.root, ".env.local"),
-  `CONTRACT_ADDRESS=${receipt.contractAddress}\n`,
+  `CONTRACT_ADDRESS=${receipt.contractAddress}\nCONTRACT_DEPLOY_BLOCK=${receipt.blockNumber}\n`,
 );
 console.log(`HSK Chain ${hskTestnet.id} contract: ${receipt.contractAddress}`);
 console.log(`Transaction: ${hskTestnet.blockExplorers.default.url}/tx/${tx}`);

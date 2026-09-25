@@ -7,6 +7,9 @@ import {
   decodeEventLog,
   defineChain,
   http,
+  keccak256,
+  parseEther,
+  stringToHex,
   type Abi,
   type Hex,
 } from "viem";
@@ -46,7 +49,13 @@ import {
   WandSparkles,
   X,
 } from "lucide-react";
-import { ticketAuthMessage, type Vendor } from "../shared/types";
+import {
+  arenaAuthMessage,
+  CHALLENGE_RULES,
+  DEFAULT_POLICY,
+  ticketAuthMessage,
+  type Vendor,
+} from "../shared/types";
 import abiJson from "../shared/HoneypotArena.abi.json";
 import "./style.css";
 
@@ -148,6 +157,7 @@ function App() {
     ticketId: number;
     purchaseTx: Hex;
   } | null>(null);
+  const [pendingArena, setPendingArena] = useState<any>(null);
   const [replayText, setReplayText] = useState("");
   const [replayResult, setReplayResult] = useState<any>(null);
   const [text, setText] = useState("");
@@ -223,6 +233,17 @@ function App() {
       setPendingExternal(null);
     }
   }, [selectedId, walletMode, browserAddress]);
+  useEffect(() => {
+    const pending =
+      walletMode === "browser" && browserAddress
+        ? localStorage.getItem(`pending-arena:${browserAddress.toLowerCase()}`)
+        : null;
+    try {
+      setPendingArena(pending ? JSON.parse(pending) : null);
+    } catch {
+      setPendingArena(null);
+    }
+  }, [walletMode, browserAddress]);
   useEffect(() => {
     if (!ticketId) {
       setTicketData(null);
@@ -332,6 +353,39 @@ function App() {
 
   function pendingKey(arenaId: number) {
     return `pending:${arenaId}:${browserAddress?.toLowerCase()}`;
+  }
+
+  function pendingArenaKey() {
+    return `pending-arena:${browserAddress?.toLowerCase()}`;
+  }
+
+  async function finishExternalArena(pending: any) {
+    const signature = await browserWallet().signMessage({
+      message: arenaAuthMessage(pending.arenaId),
+    });
+    const result = await api("/arenas/register", {
+      method: "POST",
+      body: JSON.stringify({ ...pending, signature }),
+    });
+    localStorage.removeItem(pendingArenaKey());
+    setPendingArena(null);
+    setSelectedId(result.arenaId);
+    setArena(result.arena);
+    setView("arena");
+    await refresh();
+  }
+
+  async function resumeExternalArena() {
+    if (!pendingArena) return;
+    setWorking("register-arena");
+    setError("");
+    try {
+      await finishExternalArena(pendingArena);
+    } catch (e) {
+      setError((e as Error).message);
+    } finally {
+      setWorking("");
+    }
   }
 
   async function finishExternalTicket(pending: {
@@ -513,10 +567,24 @@ function App() {
     setWorking("fund");
     setError("");
     try {
-      await api(`/arenas/${arena.id}/fund`, {
-        method: "POST",
-        body: JSON.stringify({ amountHsk: "0.005" }),
-      });
+      if (walletMode === "browser") {
+        const tx = await browserWallet().writeContract({
+          address: system.contract,
+          abi: arenaAbi,
+          functionName: "fundArena",
+          args: [BigInt(arena.id)],
+          value: parseEther("0.005"),
+        });
+        const receipt = await publicChain.waitForTransactionReceipt({
+          hash: tx,
+        });
+        if (receipt.status !== "success") throw new Error("Funding reverted");
+      } else {
+        await api(`/arenas/${arena.id}/fund`, {
+          method: "POST",
+          body: JSON.stringify({ amountHsk: "0.005" }),
+        });
+      }
       await refresh();
     } catch (e) {
       setError((e as Error).message);
@@ -546,7 +614,24 @@ function App() {
     setWorking("cancel");
     setError("");
     try {
-      await api(`/arenas/${arena.id}/cancel`, { method: "POST" });
+      if (
+        walletMode === "browser" &&
+        browserAddress?.toLowerCase() === arena.chain.creator.toLowerCase()
+      ) {
+        const tx = await browserWallet().writeContract({
+          address: system.contract,
+          abi: arenaAbi,
+          functionName: "cancelUnopenedArena",
+          args: [BigInt(arena.id)],
+        });
+        const receipt = await publicChain.waitForTransactionReceipt({
+          hash: tx,
+        });
+        if (receipt.status !== "success")
+          throw new Error("Arena cancellation reverted");
+      } else {
+        await api(`/arenas/${arena.id}/cancel`, { method: "POST" });
+      }
       await refresh();
     } catch (e) {
       setError((e as Error).message);
@@ -629,6 +714,59 @@ function App() {
     setWorking("create");
     setError("");
     try {
+      if (walletMode === "browser") {
+        if (!system?.contract || !browserAddress)
+          throw new Error("Connect your browser wallet first");
+        const rules = CHALLENGE_RULES;
+        const rulesHash = keccak256(
+          stringToHex(JSON.stringify({ rules, vendors })),
+        );
+        const firstPolicyHash = keccak256(stringToHex(DEFAULT_POLICY));
+        const tx = await browserWallet().writeContract({
+          address: system.contract,
+          abi: arenaAbi,
+          functionName: "createArena",
+          args: [
+            parseEther(draft.ticketPriceHsk),
+            parseEther(draft.minimumPotHsk),
+            rulesHash,
+            firstPolicyHash,
+          ],
+          value: parseEther(draft.seedHsk),
+        });
+        const receipt = await publicChain.waitForTransactionReceipt({
+          hash: tx,
+        });
+        if (receipt.status !== "success")
+          throw new Error("Arena creation reverted");
+        const created = receipt.logs
+          .map((log) => {
+            try {
+              return decodeEventLog({
+                abi: arenaAbi,
+                data: log.data,
+                topics: log.topics,
+              });
+            } catch {
+              return undefined;
+            }
+          })
+          .find((log) => log?.eventName === "ArenaCreated");
+        if (!created) throw new Error("ArenaCreated event missing");
+        const pending = {
+          ...draft,
+          vendors,
+          rules,
+          arenaId: Number(
+            (created.args as unknown as { arenaId: bigint }).arenaId,
+          ),
+          createTx: tx,
+        };
+        localStorage.setItem(pendingArenaKey(), JSON.stringify(pending));
+        setPendingArena(pending);
+        await finishExternalArena(pending);
+        return;
+      }
       const result = await api("/arenas", {
         method: "POST",
         body: JSON.stringify({ ...draft, vendors }),
@@ -690,6 +828,13 @@ function App() {
   }
   const stage = arena?.chain?.stage;
   const currentVersion = arena?.chain?.version || 1;
+  const canCancel =
+    stage === "Funding" &&
+    currentVersion === 1 &&
+    (walletMode === "browser"
+      ? browserAddress?.toLowerCase() === arena?.chain?.creator?.toLowerCase()
+      : system?.operator?.toLowerCase() ===
+        arena?.chain?.creator?.toLowerCase());
   const activeTicket =
     ticketData?.status === "active" &&
     !ticketData?.chain?.settled &&
@@ -869,7 +1014,7 @@ function App() {
                       <CircleDollarSign size={18} />
                     </div>
                     <div>
-                      <span>WIN THIS ROUND · 70%</span>
+                      <span>NEXT BREACH · EST. 70%</span>
                       <strong>
                         {Number(arena.chain.prizeHsk).toFixed(4)}{" "}
                         <small>test HSK</small>
@@ -1404,12 +1549,14 @@ function App() {
                         <CircleDollarSign size={17} />
                         {working === "fund"
                           ? "Funding…"
-                          : "Demo sponsor · add 0.005 test HSK"}
+                          : walletMode === "browser"
+                            ? "Your wallet · add 0.005 test HSK"
+                            : "Demo sponsor · add 0.005 test HSK"}
                         <ArrowRight size={15} />
                       </button>
                     )}
                     <div className="host-controls">
-                      <span>HOST CONTROLS · LOCAL DEMO</span>
+                      <span>PLATFORM CONTROLS · LOCAL DEMO</span>
                       {stage === "Open" && (
                         <button
                           onClick={() => void changePause(true)}
@@ -1426,7 +1573,7 @@ function App() {
                           <CheckCircle2 size={14} /> Resume challenge
                         </button>
                       )}
-                      {stage === "Funding" && currentVersion === 1 && (
+                      {canCancel && (
                         <button
                           onClick={() => void cancelArena()}
                           disabled={Boolean(working)}
@@ -1434,14 +1581,15 @@ function App() {
                           <X size={14} /> Cancel unopened arena
                         </button>
                       )}
-                      {Number(system?.operatorClaimable || 0) > 0 && (
-                        <button
-                          onClick={() => void claimCreatorRefund()}
-                          disabled={Boolean(working)}
-                        >
-                          <CircleDollarSign size={14} /> Claim creator refund
-                        </button>
-                      )}
+                      {walletMode === "demo" &&
+                        Number(system?.operatorClaimable || 0) > 0 && (
+                          <button
+                            onClick={() => void claimCreatorRefund()}
+                            disabled={Boolean(working)}
+                          >
+                            <CircleDollarSign size={14} /> Claim creator refund
+                          </button>
+                        )}
                       {stage === "Paused" && (
                         <small>
                           Existing tickets may request a full refund.
@@ -1476,7 +1624,7 @@ function App() {
                         </strong>
                       </p>
                       <p className="proof-row">
-                        <span>Reserved for next round · 30%</span>
+                        <span>Projected rollover · 30%</span>
                         <strong>
                           {Number(arena.chain.rolloverHsk).toFixed(4)} HSK
                         </strong>
@@ -1903,6 +2051,24 @@ function App() {
                 <FlaskConical size={16} /> TEMPLATE · TREASURY AGENT
               </span>
             </div>
+            {pendingArena && walletMode === "browser" && (
+              <div className="pending-arena-banner">
+                <Clock3 size={18} />
+                <span>
+                  On-chain Arena #{pendingArena.arenaId} is awaiting local
+                  registration.
+                </span>
+                <button
+                  onClick={() => void resumeExternalArena()}
+                  disabled={Boolean(working)}
+                >
+                  {working === "register-arena"
+                    ? "Registering…"
+                    : "Finish setup"}
+                  <ArrowRight size={15} />
+                </button>
+              </div>
+            )}
             <div className="create-grid">
               <div className="panel form-panel">
                 <div className="form-head">
@@ -2043,10 +2209,10 @@ function App() {
                       }
                     />
                     <small>
-                      Below the minimum, the challenge waits for funding. Uses
-                      the local demo sponsor wallet. Available:{" "}
-                      {Number(system?.operatorBalance || 0).toFixed(4)} test
-                      HSK.
+                      Below the minimum, the challenge waits for funding.{" "}
+                      {walletMode === "browser"
+                        ? "Your connected wallet funds this Arena."
+                        : `Demo sponsor available: ${Number(system?.operatorBalance || 0).toFixed(4)} test HSK.`}
                     </small>
                   </label>
                   <label>
@@ -2108,7 +2274,12 @@ function App() {
                       : "Create challenge"}
                     <ArrowRight size={17} />
                   </button>
-                  <small>HSK Chain testnet · Demo sponsor wallet</small>
+                  <small>
+                    HSK Chain testnet ·{" "}
+                    {walletMode === "browser"
+                      ? "Your connected wallet"
+                      : "Demo sponsor wallet"}
+                  </small>
                 </div>
               </div>
             </div>

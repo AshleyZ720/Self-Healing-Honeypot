@@ -21,4 +21,7 @@ export const config = {
   demoPlayerPrivateKey: process.env.DEMO_PLAYER_PRIVATE_KEY as
     `0x${string}` | undefined,
   contractAddress: process.env.CONTRACT_ADDRESS as `0x${string}` | undefined,
+  contractDeployBlock: process.env.CONTRACT_DEPLOY_BLOCK
+    ? BigInt(process.env.CONTRACT_DEPLOY_BLOCK)
+    : undefined,
 };
