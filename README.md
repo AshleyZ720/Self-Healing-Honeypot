@@ -1,5 +1,7 @@
 # BREACH Labs — Self-Healing Honeypot
 
+队友首次上手请先阅读 [TEAM_HANDOFF.md](./TEAM_HANDOFF.md)，其中包含从配置环境到完成一次完整 UI 演示的步骤。
+
 **A honeypot that gets stronger every time you break it.**
 
 一个在 HSK Chain 测试网上运行的 Agent 攻防竞技场。玩家购买 Ticket，在网页中提交恶意发票。DeepSeek Defender 只拥有商户查询、沙盒付款提案和拒绝发票三种工具。程序检查它实际调用的付款工具；如果提案违反链外冻结的可信商户名册，裁决服务签署结果，合约把测试 HSK 奖金记入玩家可领取余额。Codex Reviser 随后只追加一条局部策略补丁，重放攻击并测试正常发票，合格后把下一版策略哈希发布到 HSK。
