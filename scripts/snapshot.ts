@@ -17,6 +17,7 @@ const tables = [
   "messages",
   "attempts",
   "events",
+  "patch_candidates",
 ] as const;
 type Table = (typeof tables)[number];
 type Row = Record<string, string | number | null>;
@@ -41,6 +42,9 @@ if (process.argv[2] === "export") {
     .prepare("SELECT * FROM attempts ORDER BY ticket_id")
     .all() as Row[];
   data.events = db.prepare("SELECT * FROM events ORDER BY id").all() as Row[];
+  data.patch_candidates = db
+    .prepare("SELECT * FROM patch_candidates ORDER BY arena_id,next_version")
+    .all() as Row[];
   if (!config.contractAddress) throw new Error("CONTRACT_ADDRESS is missing");
   const snapshot: Snapshot = {
     chainId: 133,
@@ -109,7 +113,7 @@ if (process.argv[2] === "export") {
   }
   db.transaction(() => {
     for (const table of tables) {
-      for (const row of snapshot.data[table]) {
+      for (const row of snapshot.data[table] || []) {
         const columns = Object.keys(row);
         db.prepare(
           `INSERT INTO ${table} (${columns.join(",")}) VALUES (${columns.map(() => "?").join(",")})`,

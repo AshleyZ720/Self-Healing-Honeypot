@@ -69,6 +69,19 @@ CREATE TABLE IF NOT EXISTS chain_sync (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS patch_candidates (
+  arena_id INTEGER NOT NULL,
+  next_version INTEGER NOT NULL,
+  policy TEXT NOT NULL,
+  policy_hash TEXT NOT NULL,
+  evidence_hash TEXT NOT NULL,
+  proof_json TEXT NOT NULL,
+  ticket_id INTEGER NOT NULL,
+  tx_hash TEXT,
+  status TEXT NOT NULL DEFAULT 'ready',
+  created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  PRIMARY KEY (arena_id, next_version)
+);
 `);
 const messageColumns = new Set(
   (db.pragma("table_info(messages)") as { name: string }[]).map((c) => c.name),

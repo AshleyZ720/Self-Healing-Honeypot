@@ -265,16 +265,24 @@ function App() {
   }, [selectedId, arena?.breachEvidence?.[0]?.ticketId]);
   useEffect(() => {
     const stream = new EventSource("/api/events");
-    stream.onmessage = (e) => {
-      const item = JSON.parse(e.data);
-      setLiveEvents((current) => [item, ...current].slice(0, 30));
+    const update = () => {
       void refresh();
       if (ticketId)
         void api(`/tickets/${ticketId}`)
           .then(setTicketData)
           .catch(() => {});
     };
-    return () => stream.close();
+    stream.onopen = update;
+    stream.onmessage = (e) => {
+      const item = JSON.parse(e.data);
+      setLiveEvents((current) => [item, ...current].slice(0, 30));
+      update();
+    };
+    const timer = window.setInterval(update, 30000);
+    return () => {
+      stream.close();
+      window.clearInterval(timer);
+    };
   }, [refresh, ticketId]);
 
   const events = useMemo(() => {

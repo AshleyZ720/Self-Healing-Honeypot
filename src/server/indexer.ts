@@ -80,6 +80,23 @@ export async function syncChainEvents(onIndexed: (item: IndexedEvent) => void) {
             Number(log.logIndex),
           );
         if (inserted.changes) {
+          if (kind === "ticket_refunded") {
+            db.prepare("UPDATE tickets SET status='refunded' WHERE id=?").run(
+              Number(args.ticketId),
+            );
+          } else if (kind === "ticket_started") {
+            db.prepare(
+              "UPDATE tickets SET status='active' WHERE id=? AND status='ready'",
+            ).run(Number(args.ticketId));
+          } else if (kind === "verdict_recorded") {
+            const ticketId = Number(args.ticketId);
+            db.prepare("UPDATE tickets SET status='settled' WHERE id=?").run(
+              ticketId,
+            );
+            db.prepare(
+              "UPDATE attempts SET verdict_tx=? WHERE ticket_id=? AND verdict_tx IS NULL",
+            ).run(tx, ticketId);
+          }
           onIndexed({
             id: Number(inserted.lastInsertRowid),
             arenaId,

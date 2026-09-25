@@ -206,6 +206,68 @@ async function fullArena(id: number) {
   };
 }
 
+async function reconcilePublishedCandidate(
+  arenaId: number,
+  nextVersion: number,
+  tx?: string,
+  recovered = true,
+) {
+  const candidate = db
+    .prepare(
+      "SELECT * FROM patch_candidates WHERE arena_id=? AND next_version=?",
+    )
+    .get(arenaId, nextVersion) as
+    | {
+        policy: string;
+        policy_hash: string;
+        evidence_hash: string;
+        proof_json: string;
+        ticket_id: number;
+        tx_hash: string | null;
+      }
+    | undefined;
+  if (!candidate) return false;
+  const chain = await getChainArena(arenaId);
+  if (
+    chain.version !== nextVersion ||
+    chain.policyHash.toLowerCase() !== candidate.policy_hash.toLowerCase()
+  )
+    return false;
+  const inserted = db.transaction(() => {
+    db.prepare(
+      "UPDATE versions SET status='breached' WHERE arena_id=? AND version=?",
+    ).run(arenaId, nextVersion - 1);
+    const result = db
+      .prepare(
+        "INSERT OR IGNORE INTO versions (arena_id, version, policy, policy_hash, patch_json, evidence_hash, status) VALUES (?, ?, ?, ?, ?, ?, ?)",
+      )
+      .run(
+        arenaId,
+        nextVersion,
+        candidate.policy,
+        candidate.policy_hash,
+        candidate.proof_json,
+        candidate.evidence_hash,
+        chain.stage.toLowerCase(),
+      );
+    db.prepare(
+      "UPDATE attempts SET patch_status='passed' WHERE ticket_id=?",
+    ).run(candidate.ticket_id);
+    db.prepare(
+      "UPDATE patch_candidates SET status='published', tx_hash=COALESCE(?,tx_hash) WHERE arena_id=? AND next_version=?",
+    ).run(tx || null, arenaId, nextVersion);
+    return result.changes > 0;
+  })();
+  if (inserted && recovered)
+    notify(arenaId, "version_recovered", {
+      version: nextVersion,
+      tx: tx || candidate.tx_hash,
+      policyHash: candidate.policy_hash,
+      evidenceHash: candidate.evidence_hash,
+    });
+  return true;
+}
+
 async function patchAfterWin(
   arenaId: number,
   ticketId: number,
@@ -274,23 +336,29 @@ async function patchAfterWin(
       };
       const evidenceHash = contentHash(JSON.stringify(proof));
       const nextHash = policyHash(newPolicy);
-      const tx = await publishVersion(arenaId, nextHash, evidenceHash);
       db.prepare(
-        "UPDATE versions SET status='breached' WHERE arena_id=? AND version=?",
-      ).run(arenaId, chain.version);
-      db.prepare(
-        "INSERT INTO versions (arena_id, version, policy, policy_hash, patch_json, evidence_hash, status) VALUES (?, ?, ?, ?, ?, ?, 'open')",
+        "INSERT OR REPLACE INTO patch_candidates (arena_id,next_version,policy,policy_hash,evidence_hash,proof_json,ticket_id,status) VALUES (?,?,?,?,?,?,?,'ready')",
       ).run(
         arenaId,
         chain.version + 1,
         newPolicy,
         nextHash,
-        JSON.stringify(proof),
         evidenceHash,
+        JSON.stringify(proof),
+        ticketId,
       );
-      db.prepare(
-        "UPDATE attempts SET patch_status='passed' WHERE ticket_id=?",
-      ).run(ticketId);
+      const tx = await publishVersion(arenaId, nextHash, evidenceHash);
+      if (
+        !(await reconcilePublishedCandidate(
+          arenaId,
+          chain.version + 1,
+          tx,
+          false,
+        ))
+      )
+        throw new Error(
+          "Published version could not be reconciled with HSK state",
+        );
       notify(arenaId, "version_published", {
         version: chain.version + 1,
         tx,
@@ -1103,14 +1171,47 @@ app.use(
 app.listen(config.port, "127.0.0.1", () => {
   console.log(`Honeypot API ready at http://127.0.0.1:${config.port}`);
   const sync = () =>
-    void syncChainEvents((item) => bus.emit("event", item)).catch((error) =>
-      console.error("Chain event sync failed:", error),
-    );
+    void syncChainEvents((item) => {
+      bus.emit("event", item);
+      if (item.kind === "verdict_recorded" && item.payload.success === true) {
+        const ticketId = Number(item.payload.ticketId);
+        const attempt = db
+          .prepare("SELECT reason,patch_status FROM attempts WHERE ticket_id=?")
+          .get(ticketId) as
+          { reason: string; patch_status: string } | undefined;
+        if (attempt && ["queued", "error"].includes(attempt.patch_status))
+          void patchAfterWin(item.arenaId, ticketId, attempt.reason);
+      }
+      if (item.kind === "version_published") {
+        void reconcilePublishedCandidate(
+          item.arenaId,
+          Number(item.payload.version),
+          String(item.payload.tx),
+        ).catch((error) =>
+          console.error("Version event reconciliation failed:", error),
+        );
+      }
+    })
+      .then(() => {
+        const pending = db
+          .prepare(
+            "SELECT arena_id,next_version FROM patch_candidates WHERE status!='published'",
+          )
+          .all() as { arena_id: number; next_version: number }[];
+        for (const row of pending)
+          void reconcilePublishedCandidate(
+            row.arena_id,
+            row.next_version,
+          ).catch((error) =>
+            console.error("Candidate recovery failed:", error),
+          );
+      })
+      .catch((error) => console.error("Chain event sync failed:", error));
   sync();
   setInterval(sync, 8000);
   const recoverable = db
     .prepare(
-      "SELECT a.ticket_id, a.reason, t.arena_id FROM attempts a JOIN tickets t ON t.id=a.ticket_id WHERE a.won=1 AND a.verdict_tx IS NOT NULL AND a.patch_status IN ('queued','error')",
+      "SELECT a.ticket_id, a.reason, t.arena_id FROM attempts a JOIN tickets t ON t.id=a.ticket_id WHERE a.won=1 AND a.verdict_tx IS NOT NULL AND a.patch_status IN ('queued','error') AND NOT EXISTS (SELECT 1 FROM patch_candidates p WHERE p.arena_id=t.arena_id AND p.next_version=t.version+1 AND p.status='ready')",
     )
     .all() as { ticket_id: number; reason: string; arena_id: number }[];
   for (const item of recoverable) {
