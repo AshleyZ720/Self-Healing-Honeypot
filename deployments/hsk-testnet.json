@@ -1,0 +1,21 @@
+{
+  "network": "HSK Chain Testnet",
+  "chainId": 133,
+  "rpc": "https://testnet.hsk.xyz",
+  "explorer": "https://testnet-explorer.hsk.xyz",
+  "contract": "0x143f483a9188b80493FdA3b628f5baBe62C2097d",
+  "deploymentTx": "0x66c90e7ed4536f6153826fb2056e6e41ac387303acf73a5cbee759a9e79e7e59",
+  "verifiedRun": {
+    "arenaId": 2,
+    "arenaCreationTx": "0xf49a397b7bdda86f3cd3d012acd81a3ffa07fec1489da7f50fb806e421bf9c0d",
+    "winningTicketId": 2,
+    "verdictTx": "0xf209e310f55367ed7cd42001f3d30bb188d38f75efa3e013fcd05320732a1c08",
+    "claimTx": "0x0d0d7131033505fc2cd3cec46016753af17d0eddd583deb32dd771673e35830a",
+    "version2Tx": "0x993883f30609cf3f97357ad7b4eeda9f39fbeade49c1cce585eaf27887cb44ee",
+    "version2PolicyHash": "0x0d3e93908c87b324b1123fe8f0f919d9b6c88d662a8550f899ac6b9167f3897c",
+    "version2EvidenceHash": "0xaba66eb859f7817e252d625156f03bbb1c0ad352114b1770c592967e6f38b02d",
+    "version2TicketId": 3,
+    "version2VerdictTx": "0x790fbe2fbbe7da5ca8357c174fe379a266014c95cb7bb2ce889e21ba5bf543bb"
+  },
+  "freshDemoArenaId": 3
+}

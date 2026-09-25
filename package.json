@@ -1,0 +1,52 @@
+{
+  "name": "self-healing-honeypot",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "concurrently -k \"npm:dev:server\" \"npm:dev:web\"",
+    "dev:server": "tsx watch src/server/index.ts",
+    "dev:web": "vite --host 127.0.0.1",
+    "start": "tsx src/server/index.ts",
+    "build": "tsc --noEmit && vite build",
+    "format": "prettier --write 'src/**/*.{ts,tsx,css}' 'scripts/**/*.ts' package.json vite.config.ts tsconfig.json",
+    "format:check": "prettier --check 'src/**/*.{ts,tsx,css}' 'scripts/**/*.ts' package.json vite.config.ts tsconfig.json",
+    "test": "vitest run",
+    "contracts:build": "cd contracts && forge build",
+    "contracts:test": "cd contracts && forge test",
+    "deploy:hsk": "tsx scripts/deploy.ts",
+    "seed": "tsx scripts/seed.ts",
+    "check:model": "tsx scripts/check-defender.ts",
+    "check:reviser": "tsx scripts/check-reviser.ts",
+    "doctor": "tsx scripts/doctor.ts",
+    "snapshot:export": "tsx scripts/snapshot.ts export",
+    "snapshot:restore": "tsx scripts/snapshot.ts restore",
+    "accounting": "tsx scripts/accounting.ts"
+  },
+  "dependencies": {
+    "better-sqlite3": "12.11.1",
+    "cors": "2.8.6",
+    "dotenv": "18.0.4",
+    "express": "5.2.1",
+    "lucide-react": "1.48.0",
+    "openai": "6.49.0",
+    "react": "19.3.0",
+    "react-dom": "19.3.0",
+    "viem": "2.56.9"
+  },
+  "devDependencies": {
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.5",
+    "@types/node": "^20.19.0",
+    "@types/react": "^19.2.0",
+    "@types/react-dom": "^19.2.0",
+    "@vitejs/plugin-react": "^5.1.0",
+    "concurrently": "^9.2.1",
+    "prettier": "^3.9.9",
+    "tsx": "^4.20.0",
+    "typescript": "^5.9.0",
+    "vite": "^7.3.0",
+    "vitest": "^4.0.0"
+  }
+}
