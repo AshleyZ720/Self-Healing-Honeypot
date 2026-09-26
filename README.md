@@ -11,12 +11,6 @@ attack -> tool-call verdict -> onchain settlement -> bounty claim
 
 The project is a complete local-first demo backed by a deployed HSK Chain Testnet contract. It does not claim that model inference is verified onchain: the contract enforces escrow and signed-verdict settlement, while the local operator remains an explicit trust assumption.
 
-## Live frontend preview
-
-Explore the published interface at **[self-healing-honeypot.well-root-4645.chatgpt.site](https://self-healing-honeypot.well-root-4645.chatgpt.site)**.
-
-This Sites deployment contains the production Vite frontend. The recorded historical presentation and frontend-only content are available for judges to explore. The complete live workflow still depends on the local Node.js service, `/api` endpoints, SQLite evidence store, model providers, and configured testnet signing keys, which cannot be moved unchanged into the Sites edge runtime. Live attacks, verdict orchestration, Codex patching, and local recovery therefore require the locally hosted backend until those services are migrated to a separate cloud deployment.
-
 ## Key features
 
 - **Agent-native security game:** players attack a live invoice-review agent through unrestricted invoice text.
