@@ -169,6 +169,30 @@ async function fullArena(id: number) {
         })),
       };
     });
+  const winningAttempt = db
+    .prepare(
+      "SELECT a.ticket_id,a.patch_status FROM attempts a JOIN tickets t ON t.id=a.ticket_id WHERE t.arena_id=? AND t.version=? AND a.won=1 ORDER BY a.created_at DESC LIMIT 1",
+    )
+    .get(id, chain.version) as
+    { ticket_id: number; patch_status: string | null } | undefined;
+  const chainWin = events
+    .filter((item) => item.kind === "verdict_recorded")
+    .map((item) => JSON.parse(item.payload_json))
+    .find(
+      (item) => Number(item.version) === chain.version && item.success === true,
+    );
+  const patchEvent = events
+    .filter((item) =>
+      [
+        "patching",
+        "patch_candidate",
+        "replay_result",
+        "patch_rejected",
+        "patch_failed",
+        "patch_error",
+      ].includes(item.kind),
+    )
+    .at(0);
   return {
     id,
     title: row.title,
@@ -203,6 +227,18 @@ async function fullArena(id: number) {
     recentAttempts,
     breachEvidence,
     breachCount,
+    patchState:
+      chain.stage === "Patching"
+        ? {
+            ticketId:
+              winningAttempt?.ticket_id || Number(chainWin?.ticketId) || null,
+            localEvidence: Boolean(winningAttempt),
+            runningHere: busyArenas.has(id),
+            status: winningAttempt?.patch_status || "missing_evidence",
+            lastStep: patchEvent?.kind || null,
+            lastStepAt: patchEvent?.created_at || null,
+          }
+        : null,
   };
 }
 
@@ -455,8 +491,7 @@ app.get("/api/arenas/:id", async (req, res) => {
   res.json(await fullArena(Number(req.params.id)));
 });
 
-app.get("/api/chain/verdict/:hash", async (req, res) => {
-  const hash = String(req.params.hash);
+async function verifiedVerdict(hash: string) {
   if (!/^0x[0-9a-fA-F]{64}$/.test(hash))
     throw new Error("Invalid transaction hash");
   if (!config.contractAddress) throw new Error("Contract is not configured");
@@ -492,7 +527,7 @@ app.get("/api/chain/verdict/:hash", async (req, res) => {
     functionName: "verdictHashes",
     args: [args.ticketId],
   })) as Hex;
-  res.json({
+  return {
     chainId: await publicClient.getChainId(),
     transactionHash: receipt.transactionHash,
     status: receipt.status,
@@ -506,9 +541,208 @@ app.get("/api/chain/verdict/:hash", async (req, res) => {
       version: args.version.toString(),
       success: args.success,
       transcriptHash: args.transcriptHash,
+      prizeWei: args.prize.toString(),
       prizeHsk: formatEther(args.prize),
       storedHashMatches:
         recordedHash.toLowerCase() === args.transcriptHash.toLowerCase(),
+    },
+  };
+}
+
+app.get("/api/chain/verdict/:hash", async (req, res) => {
+  res.json(await verifiedVerdict(String(req.params.hash)));
+});
+
+app.get("/api/presenter/story", async (req, res) => {
+  const frozenPath = path.join(config.root, "evidence/presenter-story.json");
+  if (req.query.fresh !== "1" && fs.existsSync(frozenPath)) {
+    res.json(JSON.parse(fs.readFileSync(frozenPath, "utf8")));
+    return;
+  }
+  // A completed, recorded release cycle. The presenter never runs a model or
+  // sends a transaction; every displayed outcome comes from saved evidence.
+  const ticket = db.prepare("SELECT * FROM tickets WHERE id=2").get() as
+    TicketRow | undefined;
+  const attempt = db
+    .prepare("SELECT * FROM attempts WHERE ticket_id=2")
+    .get() as
+    | {
+        ticket_id: number;
+        transcript_hash: string;
+        won: number;
+        reason: string;
+        verdict_tx: string | null;
+      }
+    | undefined;
+  if (!ticket || !attempt?.won || !attempt.verdict_tx)
+    throw new Error("Completed presenter evidence is not available locally");
+  const versions = db
+    .prepare(
+      "SELECT * FROM versions WHERE arena_id=? AND version IN (?,?) ORDER BY version",
+    )
+    .all(ticket.arena_id, ticket.version, ticket.version + 1) as VersionRow[];
+  const [before, after] = versions;
+  if (
+    !before ||
+    !after?.patch_json ||
+    policyHash(before.policy).toLowerCase() !==
+      before.policy_hash.toLowerCase() ||
+    policyHash(after.policy).toLowerCase() !==
+      after.policy_hash.toLowerCase() ||
+    contentHash(after.patch_json).toLowerCase() !==
+      after.evidence_hash?.toLowerCase()
+  )
+    throw new Error(
+      "Recorded version or patch evidence does not match its hash",
+    );
+  const transcript = db
+    .prepare(
+      "SELECT role,content,tools_json FROM messages WHERE ticket_id=? ORDER BY id",
+    )
+    .all(ticket.id) as {
+    role: string;
+    content: string;
+    tools_json: string | null;
+  }[];
+  if (
+    contentHash(JSON.stringify(transcript)).toLowerCase() !==
+    attempt.transcript_hash.toLowerCase()
+  )
+    throw new Error("Recorded attack transcript hash does not match");
+  const invoice = transcript.find(
+    (message) => message.role === "user",
+  )?.content;
+  const defender = transcript.find((message) => message.role === "assistant");
+  if (!invoice || !defender)
+    throw new Error("Recorded attack dialogue is missing");
+  const tools = defender.tools_json ? JSON.parse(defender.tools_json) : [];
+  const proposal = tools.find((tool: any) => tool.name === "propose_payment");
+  if (!proposal) throw new Error("Recorded winning tool call is missing");
+  const verdict = await verifiedVerdict(attempt.verdict_tx);
+  if (
+    verdict.status !== "success" ||
+    !verdict.verdict.success ||
+    !verdict.verdict.storedHashMatches ||
+    Number(verdict.verdict.ticketId) !== ticket.id ||
+    verdict.verdict.transcriptHash.toLowerCase() !==
+      attempt.transcript_hash.toLowerCase()
+  )
+    throw new Error("Recorded verdict does not match HSK Chain");
+  const claim = (
+    db
+      .prepare(
+        "SELECT payload_json FROM events WHERE kind='prize_claimed' ORDER BY id",
+      )
+      .all() as { payload_json: string }[]
+  )
+    .map((row) => JSON.parse(row.payload_json))
+    .find(
+      (item) =>
+        item.player?.toLowerCase() === ticket.player.toLowerCase() &&
+        item.amount === verdict.verdict.prizeWei &&
+        Number(item.blockNumber) > Number(verdict.blockNumber),
+    );
+  const publication = (
+    db
+      .prepare(
+        "SELECT payload_json FROM events WHERE arena_id=? AND kind='version_published' ORDER BY id",
+      )
+      .all(ticket.arena_id) as { payload_json: string }[]
+  )
+    .map((row) => JSON.parse(row.payload_json))
+    .find(
+      (item) =>
+        Number(item.version) === after.version &&
+        item.policyHash?.toLowerCase() === after.policy_hash.toLowerCase() &&
+        item.evidenceHash?.toLowerCase() === after.evidence_hash?.toLowerCase(),
+    );
+  if (!claim?.tx || !publication?.tx)
+    throw new Error("Recorded claim or v2 publication is missing");
+  const [purchaseReceipt, claimReceipt, publishReceipt] = await Promise.all([
+    publicClient.getTransactionReceipt({ hash: ticket.purchase_tx as Hex }),
+    publicClient.getTransactionReceipt({ hash: claim.tx as Hex }),
+    publicClient.getTransactionReceipt({ hash: publication.tx as Hex }),
+  ]);
+  if (
+    [purchaseReceipt, claimReceipt, publishReceipt].some(
+      (receipt) => receipt.status !== "success",
+    )
+  )
+    throw new Error("One of the recorded HSK transactions failed");
+  const patch = JSON.parse(after.patch_json);
+  const gate = patch.evaluation;
+  if (
+    !gate?.passed ||
+    gate.attackRuns?.length !== 2 ||
+    gate.legitimate?.length !== 2 ||
+    !gate.unknownRejected
+  )
+    throw new Error("Recorded patch did not pass the release gate");
+  const defenseCandidates = db
+    .prepare(
+      "SELECT a.ticket_id,a.verdict_tx FROM attempts a JOIN tickets t ON t.id=a.ticket_id WHERE t.arena_id=? AND t.version=? AND a.won=0 AND a.verdict_tx IS NOT NULL ORDER BY a.created_at",
+    )
+    .all(ticket.arena_id, after.version) as {
+    ticket_id: number;
+    verdict_tx: string;
+  }[];
+  const retest = defenseCandidates.find((candidate) => {
+    const first = db
+      .prepare(
+        "SELECT content FROM messages WHERE ticket_id=? AND role='user' ORDER BY id LIMIT 1",
+      )
+      .get(candidate.ticket_id) as { content: string } | undefined;
+    return first?.content === invoice;
+  });
+  const arena = db
+    .prepare("SELECT title,vendors_json,ticket_price FROM arenas WHERE id=?")
+    .get(ticket.arena_id) as
+    { title: string; vendors_json: string; ticket_price: string } | undefined;
+  if (!arena) throw new Error("Recorded Arena is missing");
+  res.json({
+    source: "recorded",
+    chainId: verdict.chainId,
+    contract: verdict.contract,
+    arenaId: ticket.arena_id,
+    title: arena.title,
+    vendors: JSON.parse(arena.vendors_json),
+    player: ticket.player,
+    ticketId: ticket.id,
+    ticketPriceHsk: formatEther(BigInt(arena.ticket_price)),
+    invoice,
+    defenderAnswer: defender.content,
+    tools,
+    proposal: proposal.args,
+    reason: attempt.reason,
+    transcriptHash: attempt.transcript_hash,
+    prizeHsk: verdict.verdict.prizeHsk,
+    prizeWei: verdict.verdict.prizeWei,
+    patch: patch.patch,
+    gate: {
+      attackBlocked: gate.attackRuns.filter((run: any) => !run.won).length,
+      attackTotal: gate.attackRuns.length,
+      legitimatePassed: gate.legitimate.filter((run: any) => run.passed).length,
+      legitimateTotal: gate.legitimate.length,
+      unknownRejected: gate.unknownRejected,
+    },
+    v1: { version: before.version, policyHash: before.policy_hash },
+    v2: {
+      version: after.version,
+      policyHash: after.policy_hash,
+      evidenceHash: after.evidence_hash,
+    },
+    transactions: {
+      ticket: ticket.purchase_tx,
+      verdict: attempt.verdict_tx,
+      claim: claim.tx,
+      publish: publication.tx,
+      retest: retest?.verdict_tx || null,
+    },
+    chainChecks: {
+      transcriptHashMatches: verdict.verdict.storedHashMatches,
+      ticketConfirmed: purchaseReceipt.status === "success",
+      claimConfirmed: claimReceipt.status === "success",
+      v2Confirmed: publishReceipt.status === "success",
     },
   });
 });
@@ -830,6 +1064,239 @@ app.get("/api/tickets/:id", async (req, res) => {
     })),
     attempt,
   });
+});
+
+app.get("/api/tickets/:id/evidence", async (req, res) => {
+  const ticketId = Number(req.params.id);
+  if (!Number.isSafeInteger(ticketId) || ticketId <= 0)
+    throw new Error("Invalid ticket ID");
+  const ticket = db
+    .prepare("SELECT * FROM tickets WHERE id=?")
+    .get(ticketId) as TicketRow | undefined;
+  const attempt = db
+    .prepare("SELECT * FROM attempts WHERE ticket_id=?")
+    .get(ticketId) as
+    | { won: number; transcript_hash: string; verdict_tx: string | null }
+    | undefined;
+  if (!ticket || !attempt?.won || !attempt.verdict_tx)
+    throw new Error("This computer has no winning evidence for that ticket");
+  const messages = db
+    .prepare(
+      "SELECT role,content,tools_json,model,usage_json,created_at FROM messages WHERE ticket_id=? ORDER BY id",
+    )
+    .all(ticketId) as MessageRow[];
+  const transcript = messages.map((message) => ({
+    role: message.role,
+    content: message.content,
+    tools_json: message.tools_json,
+  }));
+  if (
+    contentHash(JSON.stringify(transcript)).toLowerCase() !==
+    attempt.transcript_hash.toLowerCase()
+  )
+    throw new Error("Local transcript hash does not match");
+  const onchain = await verifiedVerdict(attempt.verdict_tx);
+  if (
+    onchain.status !== "success" ||
+    !onchain.verdict.success ||
+    !onchain.verdict.storedHashMatches ||
+    onchain.verdict.transcriptHash.toLowerCase() !==
+      attempt.transcript_hash.toLowerCase()
+  )
+    throw new Error("Winning evidence does not match the HSK verdict");
+  res.json({
+    schema: "breach-winning-evidence-v1",
+    chainId: onchain.chainId,
+    contract: onchain.contract,
+    ticket: {
+      id: ticket.id,
+      arenaId: ticket.arena_id,
+      version: ticket.version,
+      player: ticket.player,
+      purchaseTx: ticket.purchase_tx,
+    },
+    attempt: {
+      transcriptHash: attempt.transcript_hash,
+      verdictTx: attempt.verdict_tx,
+    },
+    messages,
+  });
+});
+
+app.post("/api/evidence/import", async (req, res) => {
+  const bundle = req.body;
+  const ticket = bundle?.ticket;
+  const attempt = bundle?.attempt;
+  const messages = bundle?.messages;
+  if (
+    bundle?.schema !== "breach-winning-evidence-v1" ||
+    bundle?.chainId !== hskTestnet.id ||
+    bundle?.contract?.toLowerCase() !== config.contractAddress?.toLowerCase() ||
+    !Number.isSafeInteger(ticket?.id) ||
+    ticket.id <= 0 ||
+    !Number.isSafeInteger(ticket?.arenaId) ||
+    !Number.isSafeInteger(ticket?.version) ||
+    !/^0x[0-9a-fA-F]{64}$/.test(String(ticket?.purchaseTx || "")) ||
+    !/^0x[0-9a-fA-F]{64}$/.test(String(attempt?.verdictTx || "")) ||
+    !Array.isArray(messages) ||
+    messages.length < 2 ||
+    messages.length > 6
+  )
+    throw new Error("Invalid winning evidence bundle");
+  const transcript = messages.map((message: any) => ({
+    role: message.role,
+    content: message.content,
+    tools_json: message.tools_json ?? null,
+  }));
+  if (
+    transcript.some(
+      (message: any) =>
+        !["user", "assistant"].includes(message.role) ||
+        typeof message.content !== "string" ||
+        message.content.length > 20000 ||
+        (message.tools_json !== null &&
+          (typeof message.tools_json !== "string" ||
+            message.tools_json.length > 20000)),
+    ) ||
+    transcript.filter((message: any) => message.role === "user").length > 3 ||
+    contentHash(JSON.stringify(transcript)).toLowerCase() !==
+      String(attempt.transcriptHash).toLowerCase()
+  )
+    throw new Error("Imported transcript does not match its hash");
+  const [chainTicket, chainArena, onchain, purchaseReceipt] = await Promise.all(
+    [
+      getChainTicket(ticket.id),
+      getChainArena(ticket.arenaId),
+      verifiedVerdict(attempt.verdictTx),
+      publicClient.getTransactionReceipt({ hash: ticket.purchaseTx as Hex }),
+    ],
+  );
+  const purchaseEvent = purchaseReceipt.logs
+    .filter(
+      (log) =>
+        log.address.toLowerCase() === config.contractAddress!.toLowerCase(),
+    )
+    .map((log) => {
+      try {
+        return decodeEventLog({ abi, data: log.data, topics: log.topics });
+      } catch {
+        return undefined;
+      }
+    })
+    .find((item) => item?.eventName === "TicketPurchased");
+  const purchased = purchaseEvent?.args as unknown as
+    | {
+        ticketId: bigint;
+        arenaId: bigint;
+        version: bigint;
+        player: string;
+      }
+    | undefined;
+  if (
+    purchaseReceipt.status !== "success" ||
+    Number(purchased?.ticketId) !== ticket.id ||
+    Number(purchased?.arenaId) !== ticket.arenaId ||
+    Number(purchased?.version) !== ticket.version ||
+    purchased?.player.toLowerCase() !== String(ticket.player).toLowerCase() ||
+    !chainTicket.settled ||
+    chainTicket.arenaId !== ticket.arenaId ||
+    chainTicket.version !== ticket.version ||
+    chainTicket.player.toLowerCase() !== String(ticket.player).toLowerCase() ||
+    onchain.status !== "success" ||
+    !onchain.verdict.success ||
+    !onchain.verdict.storedHashMatches ||
+    Number(onchain.verdict.ticketId) !== ticket.id ||
+    Number(onchain.verdict.arenaId) !== ticket.arenaId ||
+    Number(onchain.verdict.version) !== ticket.version ||
+    onchain.verdict.transcriptHash.toLowerCase() !==
+      String(attempt.transcriptHash).toLowerCase()
+  )
+    throw new Error("Imported evidence does not match HSK Chain");
+  const arena = db
+    .prepare("SELECT * FROM arenas WHERE id=?")
+    .get(ticket.arenaId) as ArenaRow | undefined;
+  if (
+    !arena ||
+    arena.rules_hash.toLowerCase() !== chainArena.rulesHash.toLowerCase()
+  )
+    throw new Error("Local Arena rules do not match HSK Chain");
+  const version = db
+    .prepare("SELECT * FROM versions WHERE arena_id=? AND version=?")
+    .get(ticket.arenaId, ticket.version) as VersionRow | undefined;
+  if (
+    !version ||
+    policyHash(version.policy).toLowerCase() !==
+      version.policy_hash.toLowerCase() ||
+    (chainArena.version === ticket.version &&
+      version.policy_hash.toLowerCase() !== chainArena.policyHash.toLowerCase())
+  )
+    throw new Error("The challenged Defender policy is not on this computer");
+  const vendors = JSON.parse(arena.vendors_json) as Vendor[];
+  const recordedTools = transcript
+    .filter((message: any) => message.role === "assistant")
+    .flatMap((message: any) =>
+      message.tools_json ? JSON.parse(message.tools_json) : [],
+    );
+  const localVerdict = judgeProposal(recordedTools, vendors);
+  if (!localVerdict.won)
+    throw new Error("Imported tool calls do not satisfy the fixed win rule");
+  const existing = db
+    .prepare("SELECT transcript_hash FROM attempts WHERE ticket_id=?")
+    .get(ticket.id) as { transcript_hash: string } | undefined;
+  if (existing) {
+    if (
+      existing.transcript_hash.toLowerCase() !==
+      onchain.verdict.transcriptHash.toLowerCase()
+    )
+      throw new Error("A different attempt already exists for this ticket");
+    res.json({ verified: true, imported: false, patchQueued: false });
+    return;
+  }
+  if (db.prepare("SELECT 1 FROM tickets WHERE id=?").get(ticket.id))
+    throw new Error(
+      "This ticket already has partial local data; repair it on the source computer",
+    );
+  db.transaction(() => {
+    db.prepare(
+      "INSERT INTO tickets (id,arena_id,version,player,status,message_count,purchase_tx) VALUES (?,?,?,?,'settled',?,?)",
+    ).run(
+      ticket.id,
+      ticket.arenaId,
+      ticket.version,
+      ticket.player,
+      transcript.filter((message: any) => message.role === "user").length,
+      ticket.purchaseTx,
+    );
+    const insertMessage = db.prepare(
+      "INSERT INTO messages (ticket_id,role,content,tools_json,model,usage_json) VALUES (?,?,?,?,?,?)",
+    );
+    for (const message of messages)
+      insertMessage.run(
+        ticket.id,
+        message.role,
+        message.content,
+        message.tools_json ?? null,
+        message.model ?? null,
+        message.usage_json ?? null,
+      );
+    db.prepare(
+      "INSERT INTO attempts (ticket_id,transcript_hash,won,reason,verdict_tx,patch_status) VALUES (?,?,1,?,?,'queued')",
+    ).run(
+      ticket.id,
+      onchain.verdict.transcriptHash,
+      localVerdict.reason,
+      attempt.verdictTx,
+    );
+  })();
+  notify(ticket.arenaId, "winning_evidence_imported", {
+    ticketId: ticket.id,
+    transcriptHash: onchain.verdict.transcriptHash,
+  });
+  const patchQueued =
+    chainArena.stage === "Patching" && chainArena.version === ticket.version;
+  if (patchQueued)
+    void patchAfterWin(ticket.arenaId, ticket.id, localVerdict.reason);
+  res.json({ verified: true, imported: true, patchQueued });
 });
 
 app.post("/api/attack", async (req, res) => {

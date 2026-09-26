@@ -18,6 +18,7 @@
     "seed": "tsx scripts/seed.ts",
     "check:model": "tsx scripts/check-defender.ts",
     "check:reviser": "tsx scripts/check-reviser.ts",
+    "presenter:verify": "tsx scripts/verify-presenter.ts",
     "doctor": "tsx scripts/doctor.ts",
     "snapshot:export": "tsx scripts/snapshot.ts export",
     "snapshot:restore": "tsx scripts/snapshot.ts restore",
