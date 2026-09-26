@@ -157,6 +157,10 @@ export function LandingPage({
   ];
   const questions = [
     {
+      q: "Who benefits from this?",
+      a: "Agent developers and security teams. Researchers earn bounties for finding weaknesses; developers receive real adversarial cases that become regression tests before production.",
+    },
+    {
       q: "Is this a real HSK bounty?",
       a: "Yes. Tickets, escrow, signed verdicts, claims and version commitments are HSK testnet transactions. The tokens have no real value.",
     },
@@ -179,6 +183,10 @@ export function LandingPage({
           <h1>
             A honeypot that gets <em>stronger</em> every time you break it.
           </h1>
+          <p className="experience-hero__audience">
+            For teams shipping AI agents with real tools, payments, and
+            permissions.
+          </p>
           <p>
             Attack a real AI treasury agent. Win a testnet bounty when it
             proposes a payment outside the trusted registry. Watch the exploit
