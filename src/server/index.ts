@@ -455,6 +455,64 @@ app.get("/api/arenas/:id", async (req, res) => {
   res.json(await fullArena(Number(req.params.id)));
 });
 
+app.get("/api/chain/verdict/:hash", async (req, res) => {
+  const hash = String(req.params.hash);
+  if (!/^0x[0-9a-fA-F]{64}$/.test(hash))
+    throw new Error("Invalid transaction hash");
+  if (!config.contractAddress) throw new Error("Contract is not configured");
+  const receipt = await publicClient.getTransactionReceipt({
+    hash: hash as Hex,
+  });
+  const verdictLog = receipt.logs
+    .filter(
+      (log) =>
+        log.address.toLowerCase() === config.contractAddress!.toLowerCase(),
+    )
+    .map((log) => {
+      try {
+        return decodeEventLog({ abi, data: log.data, topics: log.topics });
+      } catch {
+        return undefined;
+      }
+    })
+    .find((log) => log?.eventName === "VerdictRecorded");
+  if (!verdictLog)
+    throw new Error("No verdict event from this contract in the transaction");
+  const args = verdictLog.args as unknown as {
+    ticketId: bigint;
+    arenaId: bigint;
+    version: bigint;
+    success: boolean;
+    transcriptHash: Hex;
+    prize: bigint;
+  };
+  const recordedHash = (await publicClient.readContract({
+    address: config.contractAddress,
+    abi,
+    functionName: "verdictHashes",
+    args: [args.ticketId],
+  })) as Hex;
+  res.json({
+    chainId: await publicClient.getChainId(),
+    transactionHash: receipt.transactionHash,
+    status: receipt.status,
+    blockNumber: receipt.blockNumber.toString(),
+    from: receipt.from,
+    to: receipt.to,
+    contract: config.contractAddress,
+    verdict: {
+      ticketId: args.ticketId.toString(),
+      arenaId: args.arenaId.toString(),
+      version: args.version.toString(),
+      success: args.success,
+      transcriptHash: args.transcriptHash,
+      prizeHsk: formatEther(args.prize),
+      storedHashMatches:
+        recordedHash.toLowerCase() === args.transcriptHash.toLowerCase(),
+    },
+  });
+});
+
 app.post("/api/arenas", async (req, res) => {
   if (!operatorClient || !operator || !config.contractAddress)
     throw new Error("Operator wallet or contract missing");

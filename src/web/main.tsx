@@ -137,6 +137,162 @@ function Toast({ message, dismiss }: { message: string; dismiss: () => void }) {
   );
 }
 
+type OnchainVerdict = {
+  chainId: number;
+  transactionHash: string;
+  status: string;
+  blockNumber: string;
+  contract: string;
+  verdict: {
+    ticketId: string;
+    arenaId: string;
+    version: string;
+    success: boolean;
+    transcriptHash: string;
+    prizeHsk: string;
+    storedHashMatches: boolean;
+  };
+};
+
+function VerdictProof({
+  hash,
+  transcriptHash,
+  explorer,
+}: {
+  hash: string;
+  transcriptHash?: string;
+  explorer: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [receipt, setReceipt] = useState<OnchainVerdict | null>(null);
+  const [error, setError] = useState("");
+
+  async function toggle() {
+    if (open) {
+      setOpen(false);
+      return;
+    }
+    setOpen(true);
+    if (receipt) return;
+    setLoading(true);
+    setError("");
+    try {
+      setReceipt(await api<OnchainVerdict>(`/chain/verdict/${hash}`));
+    } catch (cause) {
+      setError((cause as Error).message);
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const localHashMatches =
+    receipt && transcriptHash
+      ? receipt.verdict.transcriptHash.toLowerCase() ===
+        transcriptHash.toLowerCase()
+      : undefined;
+
+  return (
+    <div className="verdict-proof">
+      <button className="verdict-proof-toggle" onClick={() => void toggle()}>
+        <Fingerprint size={14} />
+        {open ? "Hide on-chain receipt" : "Verify verdict on HSK"}
+        <ChevronDown size={13} className={open ? "expanded" : ""} />
+      </button>
+      {open && (
+        <div className="verdict-proof-details">
+          {loading && <p>Reading the HSK Chain transaction receipt…</p>}
+          {error && <p className="verdict-proof-error">{error}</p>}
+          {receipt && (
+            <>
+              <p className="verdict-proof-intro">
+                Read directly from HSK Chain RPC. The external explorer is
+                optional.
+              </p>
+              <div className="verdict-proof-grid">
+                <span>NETWORK</span>
+                <strong>HSK Testnet · {receipt.chainId}</strong>
+                <span>TRANSACTION</span>
+                <strong
+                  className={
+                    receipt.status === "success" ? "verified" : "unverified"
+                  }
+                >
+                  {receipt.status === "success" ? "Confirmed" : "Failed"}
+                </strong>
+                <span>BLOCK</span>
+                <strong>#{receipt.blockNumber}</strong>
+                <span>CONTRACT</span>
+                <strong>{short(receipt.contract, 10, 8)}</strong>
+                <span>CONTRACT EVENT</span>
+                <strong>VerdictRecorded</strong>
+                <span>ARENA / VERSION</span>
+                <strong>
+                  #{receipt.verdict.arenaId} / v{receipt.verdict.version}
+                </strong>
+                <span>TICKET</span>
+                <strong>#{receipt.verdict.ticketId}</strong>
+                <span>RESULT</span>
+                <strong>
+                  {receipt.verdict.success
+                    ? "Breach confirmed"
+                    : "Defender held"}
+                </strong>
+                <span>PRIZE</span>
+                <strong>
+                  {Number(receipt.verdict.prizeHsk).toFixed(5)} test HSK
+                </strong>
+                <span>HASH IN CONTRACT</span>
+                <strong
+                  className={
+                    receipt.verdict.storedHashMatches
+                      ? "verified"
+                      : "unverified"
+                  }
+                >
+                  {receipt.verdict.storedHashMatches
+                    ? "Matches event"
+                    : "Mismatch"}
+                </strong>
+                {localHashMatches !== undefined && (
+                  <>
+                    <span>LOCAL TRANSCRIPT</span>
+                    <strong
+                      className={localHashMatches ? "verified" : "unverified"}
+                    >
+                      {localHashMatches ? "Matches event" : "Mismatch"}
+                    </strong>
+                  </>
+                )}
+              </div>
+              <div className="verdict-proof-hashes">
+                <span>TRANSACTION HASH</span>
+                <code>{receipt.transactionHash}</code>
+                <span>TRANSCRIPT HASH</span>
+                <code>{receipt.verdict.transcriptHash}</code>
+              </div>
+              <div className="verdict-proof-actions">
+                <button
+                  onClick={() => void navigator.clipboard.writeText(hash)}
+                >
+                  <Copy size={12} /> Copy transaction hash
+                </button>
+                <a
+                  href={`${explorer}/tx/${hash}`}
+                  target="_blank"
+                  rel="noreferrer"
+                >
+                  External explorer <ExternalLink size={12} />
+                </a>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function App() {
   const [view, setView] = useState<View>("arena");
   const [loading, setLoading] = useState(true);
@@ -160,6 +316,7 @@ function App() {
   const [pendingArena, setPendingArena] = useState<any>(null);
   const [replayText, setReplayText] = useState("");
   const [replayResult, setReplayResult] = useState<any>(null);
+  const [receiptLookup, setReceiptLookup] = useState("");
   const [text, setText] = useState("");
   const [working, setWorking] = useState("");
   const [error, setError] = useState("");
@@ -861,6 +1018,7 @@ function App() {
     ?.filter((m: any) => m.role === "assistant")
     .at(-1);
   const explorer = system?.explorer || "https://testnet-explorer.hsk.xyz";
+  const lookedUpHash = receiptLookup.match(/0x[0-9a-fA-F]{64}/)?.[0];
   const lastBreach = arena?.breachEvidence?.[0];
   const beforeProposal = lastBreach?.messages
     ?.flatMap((m: any) => m.tools || [])
@@ -1516,13 +1674,13 @@ function App() {
                           </div>
                           <p>{ticketData.attempt.reason}</p>
                           {ticketData.attempt.verdict_tx && (
-                            <a
-                              href={`${explorer}/tx/${ticketData.attempt.verdict_tx}`}
-                              target="_blank"
-                              rel="noreferrer"
-                            >
-                              View verdict on HSK <ExternalLink size={13} />
-                            </a>
+                            <VerdictProof
+                              hash={ticketData.attempt.verdict_tx}
+                              transcriptHash={
+                                ticketData.attempt.transcript_hash
+                              }
+                              explorer={explorer}
+                            />
                           )}
                         </div>
                       ) : (
@@ -1885,6 +2043,32 @@ function App() {
                       </span>
                     </div>
                   </div>
+                  <div className="panel receipt-lookup-card">
+                    <div className="panel-label">
+                      <Fingerprint size={16} /> VERIFY ANY VERDICT
+                    </div>
+                    <div className="receipt-lookup-body">
+                      <p>
+                        Paste a verdict transaction hash or explorer link. Read
+                        its receipt here, even if the external explorer is down.
+                      </p>
+                      <input
+                        value={receiptLookup}
+                        onChange={(event) =>
+                          setReceiptLookup(event.target.value)
+                        }
+                        placeholder="0x… or testnet explorer link"
+                        aria-label="Verdict transaction hash or explorer link"
+                      />
+                      {lookedUpHash && (
+                        <VerdictProof
+                          key={lookedUpHash.toLowerCase()}
+                          hash={lookedUpHash}
+                          explorer={explorer}
+                        />
+                      )}
+                    </div>
+                  </div>
                   {lastBreach && (
                     <div className="panel evidence-card">
                       <div className="panel-label">
@@ -1938,13 +2122,11 @@ function App() {
                           </button>
                         </div>
                         {lastBreach.verdictTx && (
-                          <a
-                            href={`${explorer}/tx/${lastBreach.verdictTx}`}
-                            target="_blank"
-                            rel="noreferrer"
-                          >
-                            Verify verdict on HSK <ExternalLink size={13} />
-                          </a>
+                          <VerdictProof
+                            hash={lastBreach.verdictTx}
+                            transcriptHash={lastBreach.transcriptHash}
+                            explorer={explorer}
+                          />
                         )}
                       </div>
                     </div>

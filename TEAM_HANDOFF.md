@@ -42,7 +42,7 @@
 | **交易** | 向链提交一次需要确认的操作 | 买 Ticket、记录裁决、领取奖金、发布新版本各有交易 |
 | **Gas** | 网络处理交易的小额手续费 | 钱包余额除了 Ticket 价格，还要留一点测试 HSK 支付 Gas |
 | **智能合约** | 部署在链上的公开程序，按固定代码保管和分配资金 | 托管 Ticket 与奖池，核验裁决签名，防止重复领奖 |
-| **交易哈希** | 一笔交易的查询编号 | 点击 **View verdict on HSK** 可去区块浏览器核对 |
+| **交易哈希** | 一笔交易的查询编号 | 点击 **Verify verdict on HSK** 可在本页读取链上回执，复制哈希后也能去区块浏览器搜索 |
 | **策略哈希** | 某版 Agent 规则的“指纹” | Evolution 显示它；链上记录同一指纹，便于核对版本 |
 
 **特别容易混淆的两件事：**
@@ -61,7 +61,7 @@
 3. 在 Arena 标题右边的下拉框切换关卡。找 **Treasury Agent · Override Lab · #2**，它已有 v1 到 v2 的历史，适合先观察。Arena 编号和默认选择会随新关卡变化，**不要只凭编号判断状态**。
 4. 看四个数字：**NEXT BREACH** 是下一位获胜者预计拿到的测试 HSK；**DEFENDER VERSION** 是当前 Agent 版本；**ENTRY TICKET** 是本关入场价；**VALID BREACHES** 是已记录的成功次数。
 5. 左侧 **MISSION BRIEFING** 给出可信名册；中间 **ATTACK TERMINAL** 是玩家输入区；右侧 **LIVE TELEMETRY** 显示处理步骤、裁决、合约余额和链上链接。
-6. 点击顶部 **Evolution**。在 #2 中，查看 v1 的获胜发票、错误收款地址、Codex 补上的规则，以及“攻击回放被挡住 / 合法发票仍通过”的结果。点击 **Verify verdict on HSK** 可以打开真实的测试网交易。
+6. 点击顶部 **Evolution**。在 #2 中，查看 v1 的获胜发票、错误收款地址、Codex 补上的规则，以及“攻击回放被挡住 / 合法发票仍通过”的结果。点击 **Verify verdict on HSK**，本页会直接从 HSK 测试网 RPC 读取交易回执、区块号、合约裁决事件、奖金和对话哈希；即使外部区块浏览器暂时打不开，也能核对。右侧 **VERIFY ANY VERDICT** 还允许粘贴任意裁决交易哈希或浏览器链接进行核验。
 7. Evolution 的 **CLASSROOM REPLAY** 可以对已完成版本做教学重放，无需 Ticket、没有奖金；它仍会调用模型服务并消耗少量模型额度，所以初次浏览时可以先不点击。
 
 看到这里，你就能回答“为什么用链”：**挑战费用和奖金需要可核对的托管与支付；版本和证据需要公开的时间顺序与指纹。**
@@ -111,7 +111,7 @@
 
 一旦出现 **BREACH CONFIRMED**：
 
-1. 点击 **View verdict on HSK**，在区块浏览器看到裁决交易。它记录获胜 Ticket、版本和对话指纹；网页会给出人能读懂的原因。
+1. 点击 **Verify verdict on HSK**，在本页展开链上回执。确认交易为 **Confirmed**、合约事件为 **VerdictRecorded**，并检查 Ticket、版本、奖金和对话哈希。下方保留 **External explorer** 链接，外部网站可访问时可再交叉核对。
 2. 右侧出现 **Claim … test HSK** 后点击。Demo Wallet 会发起领取交易；如果用 MetaMask，则在钱包中确认。**裁决写链后是“可领取余额”，点击 Claim 才把奖金转到玩家钱包。**
 3. 注意右侧 **Active pool** 与 **Projected rollover**：奖池不会被一次领空，剩余部分用于下一版本。
 
@@ -199,6 +199,7 @@
 | **DEFENDER HELD** | 这轮没有提出违规沙盒付款 | 看剩余回合；可调整发票措辞 |
 | **Session complete** | 这张 Ticket 已结算或退款 | 点击 **New attempt**；若要继续攻击，重新购票 |
 | **Patching / Reviser active** | Codex 正在补丁和回放 | 去 Evolution 看进度；若停住且出现 Retry，点 **Retry patch evaluation** |
+| 点 **External explorer** 打不开 | 外部测试网浏览器或当前网络不可用 | 回到本页点 **Verify verdict on HSK**，或在 Evolution 的 **VERIFY ANY VERDICT** 粘贴交易哈希；两者都直接读取 HSK RPC 回执 |
 | **Claim 按钮没有出现** | 当前钱包没有可领取奖金，或裁决尚未上链 | 看 LATEST VERDICT 和交易链接；确认右上角钱包仍是获胜钱包 |
 | 钱包交易失败 | 网络、Gas、余额或签名环节未完成 | 确认 HSK 测试网 Chain ID 133，钱包有测试 HSK；按页面提示 Resume |
 | Defender 服务报错 | 模型 API 故障或配置问题 | 演示钱包通常会退款；浏览器钱包可按页面提示 Refund ticket |
