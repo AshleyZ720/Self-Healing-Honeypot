@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.breachlabs.honeypot</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/Users/mac/.nvm/versions/node/v20.20.1/bin/node</string>
+    <string>/Users/mac/PhD/hackathon/node_modules/tsx/dist/cli.mjs</string>
+    <string>/Users/mac/PhD/hackathon/src/server/index.ts</string>
+  </array>
+  <key>WorkingDirectory</key><string>/Users/mac/PhD/hackathon</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key><string>/Users/mac</string>
+    <key>PATH</key><string>/Users/mac/.nvm/versions/node/v20.20.1/bin:/usr/local/bin:/usr/bin:/bin</string>
+    <key>CODEX_BIN</key><string>/Users/mac/.vscode/extensions/openai.chatgpt-26.917.62051-darwin-arm64/bin/macos-aarch64/codex</string>
+  </dict>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>ThrottleInterval</key><integer>10</integer>
+  <key>StandardOutPath</key><string>/Users/mac/PhD/hackathon/data/server.stdout.log</string>
+  <key>StandardErrorPath</key><string>/Users/mac/PhD/hackathon/data/server.stderr.log</string>
+</dict>
+</plist>
