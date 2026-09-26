@@ -28,13 +28,13 @@ npm run start
 
 这台演示电脑已安装 macOS 用户级 LaunchAgent `com.breachlabs.honeypot`，登录后自动启动，并在服务意外退出时重启。当前配置见 [ops/com.breachlabs.honeypot.plist](./ops/com.breachlabs.honeypot.plist)；其中 Node、Codex 和项目路径是本机绝对路径，换电脑后需修改。检查运行状态可用 `launchctl print gui/$(id -u)/com.breachlabs.honeypot`，查看日志可用 `data/server.stdout.log` 和 `data/server.stderr.log`。已启用 LaunchAgent 时无需另开一个 `npm run start` 进程。
 
-本机已有真实运行记录。如果之后只通过 Git 获取代码而没有本地 `data/arena.sqlite`，先运行 `npm run snapshot:restore`：它会校验公开快照里的策略哈希、对话哈希和裁决哈希是否与 HSK 链上状态一致，再恢复全部 Arena；默认仍展示未攻破的 Arena #3。快照位于 [evidence/hsk-demo-snapshot.json](./evidence/hsk-demo-snapshot.json)。
+本机已有真实运行记录。如果之后只通过 Git 获取代码而没有本地 `data/arena.sqlite`，可运行 `npm run snapshot:restore`：它会校验公开快照里的策略哈希、对话哈希和裁决哈希是否与 HSK 链上状态一致，再恢复快照导出时的数据。链上实时状态可能已经变化；选择挑战时以页面当前的 Open / Patching 状态为准。快照位于 [evidence/hsk-demo-snapshot.json](./evidence/hsk-demo-snapshot.json)。
 
 如果尚未配置本机密钥，复制 [.env.example](./.env.example) 为 `.env.local`，填写 `DEEPSEEK_API_KEY`、两只**仅供测试网使用**的钱包私钥与 `CONTRACT_ADDRESS`。不要把主网钱包或真实资产接入演示环境。使用新地址部署时，先运行 `npm run contracts:build`、`npm run deploy:hsk`，再在网页的 Create challenge 页创建首个 Arena。
 
 ## 现场演示路径
 
-首页选择最新的开放挑战；也可在列表中选择未攻破的 **Treasury Agent · Live Arena（Arena #3，v1）**。右上角可使用已充值的本地 Demo Wallet；也可连接浏览器钱包并切换到 HSK 测试网。
+首页选择最新的开放挑战；请以页面实时状态选择 **Open / v1** 的 Arena，不依赖固定编号。右上角可使用已充值的本地 Demo Wallet；也可连接浏览器钱包并切换到 HSK 测试网。
 
 1. 查看左侧可信商户名册、右侧可赢奖金和合约余额；点击 **Buy ticket**。购买和启动均是 HSK 测试网真实交易。右上角可切换为 MetaMask 等浏览器钱包，使用自己的测试网地址创建挑战、赞助或购票。
 2. 在攻击终端提交下面的教学攻击。v1 的设计缺陷是过度相信发票中的“财务紧急改址”指令；模型输出有随机性，未成功时同一 Ticket 还有剩余回合。
