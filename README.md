@@ -1,15 +1,16 @@
 # Self-Healing Honeypot
 
-> A honeypot that gets stronger every time you break it.
-
-Self-Healing Honeypot is a playable AI-security arena built on HSK Chain. A player buys a ticket, submits an adversarial invoice, and tries to make an AI payment agent propose an unauthorized payment. A deterministic judge evaluates the agent's actual tool calls, an EIP-712 verdict is settled onchain, and the first successful attacker can claim a test-HSK bounty. Codex then proposes one constrained policy patch, the system replays the exploit and legitimate tasks, and a new policy commitment is published onchain only if every release check passes.
+Self-Healing Honeypot is a playable AI-security arena built on HSK Chain for teams developing tool-using or payment-capable AI agents. Before trusting an agent with real permissions or assets, developers can expose a sandboxed version to adversarial testing and reward security researchers for finding real failure cases.
+A player buys a ticket, submits an adversarial invoice, and tries to make an AI treasury agent propose an unauthorized payment. The bounty is an incentive mechanism, not the product goal: attackers are rewarded for discovering weaknesses, while developers gain concrete exploits that become regression tests for the next version.
+A breach is counted only when the agent actually calls its sandbox propose_payment tool with an unauthorized recipient or amount. A deterministic judge evaluates the tool call, an EIP-712 verdict is settled on HSK Chain, and the successful attacker can claim a test-HSK bounty. The breached version then immediately enters PATCHING: Codex proposes one constrained policy patch, the system replays the winning exploit and legitimate tasks, and only a passing candidate is published as the next version.
+Players attack an isolated honeypot version, not a live production agent. The Defender never receives a wallet private key and cannot directly move bounty funds.
 
 ```text
 attack -> tool-call verdict -> onchain settlement -> bounty claim
        -> constrained Codex patch -> regression gate -> next version
 ```
 
-The project is a complete local-first demo backed by a deployed HSK Chain Testnet contract. It does not claim that model inference is verified onchain: the contract enforces escrow and signed-verdict settlement, while the local operator remains an explicit trust assumption.
+The project is a complete local-first demo backed by a deployed HSK Chain Testnet contract. HSK handles tickets, escrow, bounty settlement, and version commitments. Model execution remains off-chain: the local deterministic judge signs the verdict, so the operator is still an explicit trust assumption. The project does not claim that model inference itself is verified on-chain.
 
 ## Key features
 
