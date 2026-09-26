@@ -12,6 +12,16 @@ attack -> tool-call verdict -> onchain settlement -> bounty claim
 
 The project is a complete local-first demo backed by a deployed HSK Chain Testnet contract. HSK handles tickets, escrow, bounty settlement, and version commitments. Model execution remains off-chain: the local deterministic judge signs the verdict, so the operator is still an explicit trust assumption. The project does not claim that model inference itself is verified on-chain.
 
+## Who is this for?
+
+BREACH Labs is designed for teams deploying tool-using or payment-capable AI agents.
+
+Developers connect a sandboxed version of their agent, define a deterministic unsafe behavior, and fund a bounty. External security researchers are incentivized to discover real failure cases before the agent receives production permissions or real assets.
+
+The attacker is not the customer. The bounty is the incentive.
+
+The long-term customer is the agent developer or enterprise security team that wants continuous adversarial testing and regression protection before deployment.
+
 ## Key features
 
 - **Agent-native security game:** players attack a live invoice-review agent through unrestricted invoice text.
@@ -35,6 +45,23 @@ The project targets:
 The current deployment is on **HSK Chain Testnet (Chain ID 133)**. If a prize track requires HSK Mainnet, a mainnet deployment and production key-management review remain required before final submission.
 
 See [Technical Documentation](./docs/TECHNICAL_DOCUMENTATION.md) for the full architecture, integration design, security model, and roadmap.
+
+## Commercial path
+
+Today, BREACH Labs demonstrates one Treasury Agent.
+
+The next step is a Bring Your Own Agent platform:
+
+developer connects sandbox agent
+→ defines forbidden behavior
+→ funds bounty campaign
+→ researchers attack
+→ successful exploits become regression tests
+→ patched versions must pass the release gate
+
+A production model could use per-agent or per-campaign SaaS pricing, with optional managed bounty and settlement fees.
+
+Long term, BREACH Labs can become continuous adversarial testing infrastructure integrated into the CI/CD pipeline for production AI agents.
 
 ## Architecture
 
