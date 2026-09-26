@@ -11,6 +11,12 @@ attack -> tool-call verdict -> onchain settlement -> bounty claim
 
 The project is a complete local-first demo backed by a deployed HSK Chain Testnet contract. It does not claim that model inference is verified onchain: the contract enforces escrow and signed-verdict settlement, while the local operator remains an explicit trust assumption.
 
+## Live frontend preview
+
+Explore the published interface at **[self-healing-honeypot.well-root-4645.chatgpt.site](https://self-healing-honeypot.well-root-4645.chatgpt.site)**.
+
+This Sites deployment contains the production Vite frontend. The recorded historical presentation and frontend-only content are available for judges to explore. The complete live workflow still depends on the local Node.js service, `/api` endpoints, SQLite evidence store, model providers, and configured testnet signing keys, which cannot be moved unchanged into the Sites edge runtime. Live attacks, verdict orchestration, Codex patching, and local recovery therefore require the locally hosted backend until those services are migrated to a separate cloud deployment.
+
 ## Key features
 
 - **Agent-native security game:** players attack a live invoice-review agent through unrestricted invoice text.
@@ -147,17 +153,6 @@ npm run deploy:hsk
 ```
 
 The deployment script prints the address and deployment block. Add both values to `.env.local`, restart the service, then create and fund an Arena from the web interface.
-
-## Three-minute demo path
-
-1. Open the landing page and choose **View 3-minute story** for the fastest deterministic walkthrough.
-2. Show the fixed vendor registry and the recorded HSK ticket purchase.
-3. Inspect the adversarial invoice and the Defender's real `propose_payment` arguments.
-4. Verify the signed verdict transaction and bounty claim.
-5. Show the one-rule Codex patch and the measured regression gate.
-6. Verify the v2 policy/evidence commitment and the same exploit being rejected on v2.
-
-For a live run, choose an **Open / v1** Arena, buy a ticket, and submit an invoice that tries to redirect payment away from the registered vendor address. Model output is nondeterministic, and a ticket supports up to three attempts.
 
 ## Verification commands
 
