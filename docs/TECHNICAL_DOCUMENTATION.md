@@ -215,32 +215,9 @@ The repository includes a presenter story and a demo snapshot. Restore and verif
 
 The repository contains a verified v1-to-v2 testnet run, including ticket purchase, winning verdict, prize claim, policy publication, a later v2 ticket, and a safe v2 verdict. Transaction links are listed in the root README.
 
-## 10. Future roadmap and iteration plan
+## 10. Future roadmap
 
-### Phase 1 — Submission hardening
-
-- Confirm final track rules and deploy to HSK Mainnet if mainnet is mandatory.
-- Move operator signing from a local environment variable to a managed signer or hardware-backed key.
-- Add CI for TypeScript tests, Foundry tests, formatting, and production builds.
-- Publish a short demo video and a reproducible deployment manifest.
-
-### Phase 2 — Decentralized and privacy-preserving evidence
-
-- Store encrypted transcripts in a user-controlled data vault and anchor content-addressed references onchain.
-- Add selective disclosure so a player can prove the relevant tool call without publishing the entire conversation.
-- Investigate TEE or ZK-assisted attestation for judge execution while keeping the contract interface stable.
-- Support independent verdict signers and threshold approval to reduce operator trust.
-
-### Phase 3 — Reusable agent-security middleware
-
-- Extract the tool-call judge, EIP-712 verdict schema, regression gate, and evidence bundle into an SDK.
-- Add policy templates for treasury, swaps, subscriptions, and agent-to-agent service payments.
-- Provide a CLI for creating Arenas, replaying exploits, verifying evidence, and exporting benchmark datasets.
-- Add standardized attack categories, severity scores, and cross-version robustness metrics.
-
-### Phase 4 — Sustainable public arena
-
-- Add creator reputation, player contribution records, and transparent challenge-quality metrics.
-- Support community-sponsored pools and public-goods funding for high-value agent security tests.
-- Introduce rate limits, anti-sybil mechanisms, audited contracts, and production observability.
-- Expand from single-agent invoice review to multi-agent coordination and machine-to-machine payment scenarios.
+- **Today — One Boss:** A Treasury Agent bounty arena where researchers find weaknesses and successful attacks become measured regression tests.
+- **Next — Bring Your Own Boss:** Companies connect their own sandbox agents, define safe-action policies, and fund focused security-testing campaigns.
+- **Eventually — Continuous Agent Security:** Discovered exploits remain in each agent's regression suite and automatically gate future production releases.
+- **Trust upgrade:** Reduce reliance on the centralized verdict signer through verifiable inference, including approaches such as TEE or zkTLS attestations.

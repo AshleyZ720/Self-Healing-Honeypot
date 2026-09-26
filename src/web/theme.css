@@ -89,6 +89,9 @@
 .theme-light .experience-why > div > p {
   color: #6f6376;
 }
+.theme-light .experience-hero__copy > .experience-hero__audience {
+  color: #4f3c59;
+}
 .theme-light .experience-hero__signals span,
 .theme-light .experience-hero__poke {
   color: #8c8093;
